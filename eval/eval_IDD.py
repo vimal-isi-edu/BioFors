@@ -11,12 +11,12 @@ import os
 
 # Input arguments by user
 parser = argparse.ArgumentParser(description='PyTorch BioFors IDD Evaluation')
-parser.add_argument('-pdf_list', metavar='copymove_pdfs', help='path to IDD test pdf list', default='copymove_pdfs')
-parser.add_argument('-OUT_DIR', metavar='OUT_DIR', help='path to output/predicted image directory', default='predict/IDD/')
-parser.add_argument('-categories', metavar='categories', nargs='+', help='Choose one/all of the following categories - Microscopy, Blot/Gel, Macroscopy', default=['Microscopy', 'Blot/Gel', 'Macroscopy'], required=True)
-parser.add_argument('-IDD_gt', metavar='from_scratch_copymove_gt.json', help='path to groundtruth annotation file')
-parser.add_argument('-IDD_classification', metavar='from_scratch_classification.json', help='path to image classification annotation')
-parser.add_argument('--img_path', metavar='from_scratch_panels/', help='path where input images are stored', default='from_scratch_panels/')
+parser.add_argument('--pdf_list', help='path to IDD test pdf list', default='../annotation_files/idd_pdfs.pkl')
+parser.add_argument('--out_dir', help='path to output/predicted image directory', default='../predictions/IDD/')
+parser.add_argument('--categories', nargs='+', help='Choose one/all of the following categories: Microscopy Blot/Gel Macroscopy', default=['Microscopy', 'Blot/Gel', 'Macroscopy'], required=True)
+parser.add_argument('--idd_gt', help='path to groundtruth annotation file', default='../annotation_files/idd_gt.json')
+parser.add_argument('--idd_classification', help='path to image classification annotation', default='../annotation_files/classification.json')
+parser.add_argument('--img_path', help='path where input images are stored', default='../biofors_images/')
 
 # evaluate the model
 class Evaluate_IDD():
@@ -43,7 +43,7 @@ class Evaluate_IDD():
 
             for panel, cls in self.cls_type[doi].items():
                 if cls in self.categories:
-                    
+
                     img_name = os.path.join(self.img_path+doi+'/'+panel)
                     img = cv2.imread(img_name, 0)
 
@@ -92,7 +92,7 @@ class Evaluate_IDD():
                             self.img_tn += 1
                         else:
                             self.img_fp += 1
-        
+
         return self
 
     # make a class prediction for one row of data
@@ -132,28 +132,28 @@ class Evaluate_IDD():
 if __name__ == '__main__':
     
     args = parser.parse_args()
-    
+
     # prepare the data
     pdf_list = args.pdf_list
-    OUT_DIR = args.OUT_DIR   
+    OUT_DIR = args.out_dir
     categories = args.categories
     img_path = args.img_path
-    
-    with open(pdf_list+'.pkl', 'rb') as f:
+
+    with open(pdf_list, 'rb') as f:
         pdfs = pickle.load(f)
 
-    with open(args.IDD_gt, 'r') as f:
+    with open(args.idd_gt, 'r') as f:
         gt = json.load(f)
 
-    with open(args.IDD_classification, 'r') as f:
+    with open(args.idd_classification, 'r') as f:
         cls_type = json.load(f)
     
     # Initialize the Evaluation class
     init_IDD = Evaluate_IDD(pdfs, gt, cls_type, OUT_DIR, categories, img_path)
     
     # Evaluate the IDD model
-    eval_IDD = Evaluate_IDD.evaluate_model(init_IDD)
+    init_IDD.evaluate_model()
     
     # Display the metric computation                   
-    Evaluate_IDD.compute_metric(eval_IDD)
+    init_IDD.compute_metric()
         
