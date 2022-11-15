@@ -1,5 +1,3 @@
-
-
 import math
 import json
 from tqdm import tqdm
@@ -11,26 +9,23 @@ import os
 
 # Input arguments by user
 parser = argparse.ArgumentParser(description='PyTorch BioFors EDD Evaluation')
-parser.add_argument('-pdf_list', metavar='duplication_pdfs', help='path to EDD test pdf list', default='duplication_pdfs')
-parser.add_argument('-OUT_DIR', metavar='OUT_DIR', help='path to output/predicted image directory', default='predict/EDD/')
-parser.add_argument('-categories', metavar='categories', nargs='+', default=['Blot/Gel', 'Microscopy', 'Macroscopy', 'FACS'], help='Choose one/all of the following categories - Blot/Gel, Microscopy, Macroscopy, FACS', required=True)
-parser.add_argument('-EDD_gt', metavar='from_scratch_duplicate_gt.json', help='path to groundtruth annotation file', default ='from_scratch_duplicate_gt.json')
-parser.add_argument('-EDD_test_pairs', metavar='from_scratch_test_pairs.json', help='path to image test pairs annotation file', default='from_scratch_test_pairs.json')
-parser.add_argument('-EDD_classification', metavar='from_scratch_classification.json', help='path to image classification annotation', default='from_scratch_classification.json')
-parser.add_argument('--img_path', metavar='from_scratch_panels/', help='path where input images are stored', default='from_scratch_panels/')
-parser.add_argument('-area_th', metavar='area_th', help='Choose the area percentage to ignore in predicted images', default=0.1, type=float)
+parser.add_argument('--image-categories', nargs='+', default=['Blot/Gel', 'Microscopy', 'Macroscopy', 'FACS'], help='Choose one/all of the following categories - Blot/Gel, Microscopy, Macroscopy, FACS', required=True)
+parser.add_argument('--annotation-dir', help='path to annotation file directory', default='./annotation_files/', required=False)
+parser.add_argument('--output-dir', help='path to output/predicted image directory', default='predictions/EDD/', required=False)
+parser.add_argument('--image-dir', help='path where input images are stored', default='biofors_images/', required=False)
+parser.add_argument('--area_th', help='Choose the area percentage to ignore in predicted images', default=0.1, type=float, required=False)
 
 # evaluate the model
 class Evaluate_EDD():
-    def __init__(self, pdfs, gt, all_pairs, cls_type, OUT_DIR, categories, area_th, img_path):
+    def __init__(self, pdfs, gt, all_pairs, cls_type, output_dir, image_categories, area_th, image_dir):
         # store the inputs and outputs
         self.pdfs = pdfs
         self.gt = gt
         self.all_pairs = all_pairs
         self.cls_type = cls_type
-        self.OUT_DIR = OUT_DIR
-        self.categories = categories
-        self.img_path = img_path
+        self.output_dir = output_dir
+        self.image_categories = image_categories
+        self.image_dir = image_dir
         self.img_tp = 0
         self.img_fp = 0
         self.img_tn = 0
@@ -51,11 +46,11 @@ class Evaluate_EDD():
 
                     panel1, panel2 = pair.split()
 
-                    if self.cls_type[doi][panel1] not in self.categories:
+                    if self.cls_type[doi][panel1] not in self.image_categories:
                         continue
 
-                    img_name1 = os.path.join(self.img_path+doi+'/'+panel1)
-                    img_name2 = os.path.join(self.img_path+doi+'/'+panel2)
+                    img_name1 = os.path.join(self.image_dir+doi+'/'+panel1)
+                    img_name2 = os.path.join(self.image_dir+doi+'/'+panel2)
                     img1 = cv2.imread(img_name1, 0)
                     img2 = cv2.imread(img_name2, 0)
 
@@ -77,8 +72,8 @@ class Evaluate_EDD():
                             gt_mask2[c[1]:c[3],c[0]:c[2]] = 1
 
                     dir_name = pair.replace(' ', '__')
-                    pred_mask1 = cv2.imread(os.path.join(self.OUT_DIR+doi+'/'+dir_name+'/'+panel1), 0)
-                    pred_mask2 = cv2.imread(os.path.join(self.OUT_DIR+doi+'/'+dir_name+'/'+panel2), 0)
+                    pred_mask1 = cv2.imread(os.path.join(self.output_dir+doi+'/'+dir_name+'/'+panel1), 0)
+                    pred_mask2 = cv2.imread(os.path.join(self.output_dir+doi+'/'+dir_name+'/'+panel2), 0)
 
                     if 255 in pred_mask1:
                         pred_mask1 = (pred_mask1/255).astype(np.int)
@@ -95,9 +90,9 @@ class Evaluate_EDD():
                     assert pred_mask2.shape==gt_mask2.shape,'Shape Mismatch!!'
 
                     # if prediction has 5% white pixels, erase them
-                    if np.sum(pred_mask1)<area_th*(pred_mask1.shape[0]*pred_mask1.shape[1]):
+                    if np.sum(pred_mask1)<self.area_th*(pred_mask1.shape[0]*pred_mask1.shape[1]):
                         pred_mask1 = 0
-                    if np.sum(pred_mask2)<area_th*(pred_mask2.shape[0]*pred_mask2.shape[1]):
+                    if np.sum(pred_mask2)<self.area_th*(pred_mask2.shape[0]*pred_mask2.shape[1]):
                         pred_mask2 = 0
 
                     self.tp += np.sum(pred_mask1*gt_mask1) + np.sum(pred_mask2*gt_mask2)
@@ -133,7 +128,7 @@ class Evaluate_EDD():
 
     # make a class prediction for one row of data
     def compute_metric(self):
-        print('\033[1m' +'Category - ' + '\033[0m', self.categories)
+        print('\033[1m' +'Category - ' + '\033[0m', self.image_categories)
         print('\033[1m' +'Image Level Metrics:'+ '\033[0m')
         print('Image - TP: {} \nImage FP: {} \nImage TN: {} \nImage FN: {}'.format(self.img_tp, self.img_fp, self.img_tn, self.img_fn))
         img_precision = self.img_tp/(self.img_tp+self.img_fp)
@@ -170,26 +165,20 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     # prepare the data
-    pdf_list = args.pdf_list
-    OUT_DIR = args.OUT_DIR
-    categories = args.categories
-    area_th = args.area_th
-    img_path = args.img_path
-
-    with open(pdf_list+'.pkl', 'rb') as f:
+    with open(os.path.join(args.annotation_dir, 'edd_pdfs.pkl'), 'rb') as f:
         pdfs = pickle.load(f)
 
-    with open(args.EDD_gt, 'r') as f:
+    with open(os.path.join(args.annotation_dir, 'edd_gt.json'), 'r') as f:
         gt = json.load(f)
 
-    with open(args.EDD_test_pairs, 'r') as f:
+    with open(os.path.join(args.annotation_dir, 'edd_test_pairs.json'), 'r') as f:
         all_pairs = json.load(f)
 
-    with open(args.EDD_classification, 'r') as f:
+    with open(os.path.join(args.annotation_dir, 'classification.json'), 'r') as f:
         cls_type = json.load(f)
         
     # Initialize the Evaluation class
-    init_EDD = Evaluate_EDD(pdfs, gt, all_pairs, cls_type, OUT_DIR, categories, area_th, img_path)
+    init_EDD = Evaluate_EDD(pdfs, gt, all_pairs, cls_type, args.output_dir, args.image_categories, args.area_th, args.image_dir)
     
     # Evaluate the EDD model
     eval_EDD = Evaluate_EDD.evaluate_model(init_EDD)
